@@ -1,2 +1,36 @@
+# 환경
+.venv/
+__pycache__/
+*.pyc
+*.pyo
 .env
+
+# 데이터 (대용량 — AI-Hub에서 직접 다운로드 후 preprocess.py로 생성)
+dataset/raw/
+dataset/processed/images/
+dataset/processed/labels/
+dataset/processed/metadata.csv
+dataset/embeddings/*.npy
+dataset/embeddings/embedding_dim.txt
+dataset/embeddings/split_meta.csv
+
+# 모델 체크포인트 (대용량)
+results/fcn_regressor/checkpoints/
+
+# 로그
+*.log
+download.log
+download_training_images.log
+
+# aihubshell 바이너리
+aihubshell
+
+# Claude Code
 CLAUDE.md
+.claude/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp

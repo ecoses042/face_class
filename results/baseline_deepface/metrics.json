@@ -1,0 +1,7 @@
+{
+  "n_samples": 4355,
+  "MAE": 15.9371,
+  "RMSE": 18.791,
+  "ME": 12.3357,
+  "frontal_only": false
+}
