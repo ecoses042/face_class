@@ -51,26 +51,60 @@ def split_by_person(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def extract_one(img_path: str, model_name: str,
-                bbox_x: float = 0, bbox_y: float = 0,
-                bbox_w: float = 0, bbox_h: float = 0) -> np.ndarray | None:
-    try:
-        from PIL import Image
-        img = Image.open(img_path).convert("RGB")
-        iw, ih = img.size
+MAX_DIM = 1280  # 검출 전 리사이즈 최대 크기 (속도 확보)
 
-        # bbox가 유효하면 얼굴 영역 크롭 (여유 20% 추가)
-        if bbox_w > 0 and bbox_h > 0:
-            pad_x = bbox_w * 0.2
-            pad_y = bbox_h * 0.2
-            x1 = max(0, int(bbox_x - pad_x))
-            y1 = max(0, int(bbox_y - pad_y))
-            x2 = min(iw, int(bbox_x + bbox_w + pad_x))
-            y2 = min(ih, int(bbox_y + bbox_h + pad_y))
-            img = img.crop((x1, y1, x2, y2))
+
+def _resize_for_detection(img):
+    """긴 쪽이 MAX_DIM을 넘으면 비율 유지로 리사이즈."""
+    from PIL import Image as PILImage
+    w, h = img.size
+    scale = min(MAX_DIM / max(w, h), 1.0)
+    if scale < 1.0:
+        img = img.resize((int(w * scale), int(h * scale)), PILImage.BILINEAR)
+    return img, scale
+
+
+def _detect_and_crop(img_array: np.ndarray, iw: int, ih: int) -> np.ndarray | None:
+    """opencv로 얼굴 검출 후 원본 크기 기준으로 20% 패딩 크롭."""
+    try:
+        faces = DeepFace.extract_faces(
+            img_path=img_array,
+            detector_backend="opencv",
+            enforce_detection=True,
+        )
+        if not faces:
+            return None
+        fa = faces[0]["facial_area"]
+        x, y, w, h = fa["x"], fa["y"], fa["w"], fa["h"]
+        pad_x, pad_y = w * 0.2, h * 0.2
+        x1 = max(0, int(x - pad_x))
+        y1 = max(0, int(y - pad_y))
+        x2 = min(iw, int(x + w + pad_x))
+        y2 = min(ih, int(y + h + pad_y))
+        from PIL import Image as PILImage
+        return np.array(PILImage.fromarray(img_array).crop((x1, y1, x2, y2)))
+    except Exception:
+        return None
+
+
+def extract_one(img_path: str, model_name: str, **_) -> np.ndarray | None:
+    """
+    이미지를 1280px로 리사이즈 → opencv 얼굴 검출 → 크롭(20% 패딩) → ArcFace 임베딩.
+    predict.py와 완전히 동일한 파이프라인으로 학습-추론 분포를 일치시킨다.
+    검출 실패 시 리사이즈 이미지 전체로 fallback.
+    """
+    try:
+        from PIL import Image as PILImage
+        img = PILImage.open(img_path).convert("RGB")
+        img_small, _ = _resize_for_detection(img)
+        img_arr = np.array(img_small)
+        sw, sh = img_small.size
+
+        face_crop = _detect_and_crop(img_arr, sw, sh)
+        input_img = face_crop if face_crop is not None else img_arr
 
         result = DeepFace.represent(
-            img_path=np.array(img),
+            img_path=input_img,
             model_name=model_name,
             enforce_detection=False,
             detector_backend="skip",
@@ -109,15 +143,11 @@ def main():
     embeddings, labels, filenames, splits = [], [], [], []
 
     for _, row in tqdm(val.iterrows(), total=len(val)):
-        emb = extract_one(
-            row["image_path"], args.model_name,
-            bbox_x=row.get("bbox_x", 0), bbox_y=row.get("bbox_y", 0),
-            bbox_w=row.get("bbox_w", 0), bbox_h=row.get("bbox_h", 0),
-        )
+        emb = extract_one(row["image_path"], args.model_name)
         if emb is None:
             continue
         embeddings.append(emb)
-        labels.append(float(row["photo_age"]))
+        labels.append(float(row["age_past"]))
         filenames.append(row["filename"])
         splits.append(row["fcn_split"])
 
