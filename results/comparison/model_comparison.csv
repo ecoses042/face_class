@@ -1,3 +1,3 @@
-model,MAE,RMSE,ME,n_samples
-baseline_deepface,15.9371,18.791,12.3357,4355
-fcn_regressor,9.2657,12.4432,-5.1021,393
+model,n_samples,MAE,RMSE,ME
+baseline_deepface,393,12.799,15.2633,5.2519
+fcn_regressor,393,6.2152,8.3784,-3.2619
