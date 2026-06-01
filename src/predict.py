@@ -28,6 +28,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent))
 from config import RESULTS_DIR
 from models import AgeRegressor
+from utils import extract_face_crop
 
 CKPT_PATH = RESULTS_DIR / "fcn_regressor" / "checkpoints" / "best_model.pt"
 EMBED_DIM  = 512
@@ -43,8 +44,9 @@ def _deepface():
 def predict_baseline(img_path: str) -> float | None:
     DeepFace = _deepface()
     try:
+        crop = extract_face_crop(img_path)
         result = DeepFace.analyze(
-            img_path=img_path,
+            img_path=crop,
             actions=["age"],
             enforce_detection=False,
             silent=True,
@@ -56,55 +58,17 @@ def predict_baseline(img_path: str) -> float | None:
 
 
 # ── 모델 2: FCN Regressor ────────────────────────────────────────────
-MAX_DIM = 1280  # extract_embeddings.py와 동일
-
-
-def _resize_for_detection(img):
-    """긴 쪽이 MAX_DIM을 넘으면 비율 유지로 리사이즈."""
-    from PIL import Image as PILImage
-    w, h = img.size
-    scale = min(MAX_DIM / max(w, h), 1.0)
-    if scale < 1.0:
-        img = img.resize((int(w * scale), int(h * scale)), PILImage.BILINEAR)
-    return img
-
-
 def extract_embedding(img_path: str) -> np.ndarray | None:
     """
     이미지를 1280px로 리사이즈 → opencv 얼굴 검출 → 크롭(20% 패딩) → ArcFace 임베딩.
     extract_embeddings.py 학습 파이프라인과 동일한 방식.
     """
-    from PIL import Image as PILImage
     DeepFace = _deepface()
 
     try:
-        img = PILImage.open(img_path).convert("RGB")
-        img_small = _resize_for_detection(img)
-        img_arr = np.array(img_small)
-        sw, sh = img_small.size
-
-        face_crop = None
-        try:
-            faces = DeepFace.extract_faces(
-                img_path=img_arr,
-                detector_backend="opencv",
-                enforce_detection=True,
-            )
-            if faces:
-                fa = faces[0]["facial_area"]
-                x, y, w, h = fa["x"], fa["y"], fa["w"], fa["h"]
-                pad_x, pad_y = w * 0.2, h * 0.2
-                x1 = max(0, int(x - pad_x))
-                y1 = max(0, int(y - pad_y))
-                x2 = min(sw, int(x + w + pad_x))
-                y2 = min(sh, int(y + h + pad_y))
-                face_crop = img_arr[y1:y2, x1:x2]
-        except Exception:
-            pass  # 검출 실패 → 전체 이미지로 fallback
-
-        input_img = face_crop if face_crop is not None else img_arr
+        crop = extract_face_crop(img_path)
         result = DeepFace.represent(
-            img_path=input_img,
+            img_path=crop,
             model_name="ArcFace",
             enforce_detection=False,
             detector_backend="skip",

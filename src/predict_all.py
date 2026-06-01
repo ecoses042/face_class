@@ -27,6 +27,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).parent))
 from config import RESULTS_DIR
 from models import AgeRegressor
+from utils import extract_face_crop
 
 FCN_CKPT       = RESULTS_DIR / "fcn_regressor" / "checkpoints" / "best_model.pt"
 SMALL_CNN_CKPT = RESULTS_DIR / "cnn_small"     / "checkpoints" / "best_model.keras"
@@ -53,8 +54,9 @@ def _load_and_resize(img_path: str, max_dim: int = 1280) -> np.ndarray:
 # ── Model 1: DeepFace Baseline ───────────────────────────────────────
 def predict_deepface(img_path: str) -> float | None:
     try:
+        crop = extract_face_crop(img_path)
         result = _deepface().analyze(
-            img_path=img_path, actions=["age"],
+            img_path=crop, actions=["age"],
             enforce_detection=False, silent=True,
         )
         return float(result[0]["age"])
@@ -66,25 +68,9 @@ def predict_deepface(img_path: str) -> float | None:
 def _extract_embedding(img_path: str) -> np.ndarray | None:
     DeepFace = _deepface()
     try:
-        img_arr = _load_and_resize(img_path)
-        sw, sh = img_arr.shape[1], img_arr.shape[0]
-        face_crop = None
-        try:
-            faces = DeepFace.extract_faces(
-                img_path=img_arr, detector_backend="opencv", enforce_detection=True,
-            )
-            if faces:
-                fa = faces[0]["facial_area"]
-                x, y, w, h = fa["x"], fa["y"], fa["w"], fa["h"]
-                px, py = w * 0.2, h * 0.2
-                x1, y1 = max(0, int(x - px)), max(0, int(y - py))
-                x2, y2 = min(sw, int(x + w + px)), min(sh, int(y + h + py))
-                face_crop = img_arr[y1:y2, x1:x2]
-        except Exception:
-            pass
-        inp = face_crop if face_crop is not None else img_arr
+        crop = extract_face_crop(img_path)
         result = DeepFace.represent(
-            img_path=inp, model_name="ArcFace",
+            img_path=crop, model_name="ArcFace",
             enforce_detection=False, detector_backend="skip",
         )
         return np.array(result[0]["embedding"], dtype=np.float32)
@@ -148,27 +134,7 @@ def _predict_keras(img_path: str, ckpt: Path, key: str, builder) -> float | None
 
 def _face_crop_image(img_path: str) -> Image.Image:
     """DeepFace opencv 검출 → 크롭 → fallback: 전체 이미지. extract_face_crops.py 와 동일."""
-    DeepFace = _deepface()
-    img = Image.open(img_path).convert("RGB")
-    w, h = img.size
-    scale = min(1280 / max(w, h), 1.0)
-    if scale < 1.0:
-        img = img.resize((int(w * scale), int(h * scale)), Image.BILINEAR)
-    img_arr = np.array(img)
-    sw, sh = img.size
-    try:
-        faces = DeepFace.extract_faces(img_path=img_arr, detector_backend="opencv",
-                                       enforce_detection=True)
-        if faces:
-            fa = faces[0]["facial_area"]
-            x, y, fw, fh = fa["x"], fa["y"], fa["w"], fa["h"]
-            px, py = fw * 0.2, fh * 0.2
-            x1, y1 = max(0, int(x - px)), max(0, int(y - py))
-            x2, y2 = min(sw, int(x + fw + px)), min(sh, int(y + fh + py))
-            return img.crop((x1, y1, x2, y2))
-    except Exception:
-        pass
-    return img
+    return Image.fromarray(extract_face_crop(img_path))
 
 
 def predict_small_cnn(img_path: str) -> float | None:
