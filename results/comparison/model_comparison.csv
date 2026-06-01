@@ -1,3 +1,5 @@
 model,n_samples,MAE,RMSE,ME
 baseline_deepface,393,12.799,15.2633,5.2519
 fcn_regressor,393,6.2152,8.3784,-3.2619
+cnn_vgg,393,11.725,14.9707,-4.5951
+cnn_small,393,8.5285,11.3965,-3.4038
