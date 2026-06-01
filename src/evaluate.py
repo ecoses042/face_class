@@ -121,7 +121,8 @@ def main():
     args = parser.parse_args()
 
     if args.compare:
-        dirs = [RESULTS_DIR / "baseline_deepface", RESULTS_DIR / "fcn_regressor"]
+        dirs = [RESULTS_DIR / "baseline_deepface", RESULTS_DIR / "fcn_regressor",
+                RESULTS_DIR / "cnn_vgg", RESULTS_DIR / "cnn_small"]
         compare(dirs)
     elif args.pred:
         label = args.pred.parent.name

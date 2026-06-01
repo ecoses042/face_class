@@ -28,11 +28,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import RESULTS_DIR
 from models import AgeRegressor
 
-FCN_CKPT       = RESULTS_DIR / "fcn_regressor"    / "checkpoints" / "best_model.pt"
-SMALL_CNN_RAW_CKPT   = RESULTS_DIR / "small_cnn_aihub"       / "checkpoints" / "best_model.keras"
-SMALL_CNN_CROP_CKPT  = RESULTS_DIR / "small_cnn_aihub_crops" / "checkpoints" / "best_model.keras"
-VGG_CNN_RAW_CKPT     = RESULTS_DIR / "cnn_aihub"             / "checkpoints" / "best_model.keras"
-VGG_CNN_CROP_CKPT    = RESULTS_DIR / "cnn_aihub_crops"       / "checkpoints" / "best_model.keras"
+FCN_CKPT       = RESULTS_DIR / "fcn_regressor" / "checkpoints" / "best_model.pt"
+SMALL_CNN_CKPT = RESULTS_DIR / "cnn_small"     / "checkpoints" / "best_model.keras"
+VGG_CNN_CKPT   = RESULTS_DIR / "cnn_vgg"       / "checkpoints" / "best_model.keras"
 IMG_SIZE = 128
 EMBED_DIM = 512
 
@@ -173,12 +171,7 @@ def _face_crop_image(img_path: str) -> Image.Image:
     return img
 
 
-def predict_small_cnn_raw(img_path: str) -> float | None:
-    from models_cnn import build_small_cnn_regressor
-    return _predict_keras(img_path, SMALL_CNN_RAW_CKPT, "small_raw", build_small_cnn_regressor)
-
-
-def predict_small_cnn_crops(img_path: str) -> float | None:
+def predict_small_cnn(img_path: str) -> float | None:
     from models_cnn import build_small_cnn_regressor
     # 학습과 동일한 얼굴 크롭 전처리 적용
     face = _face_crop_image(img_path)
@@ -186,13 +179,13 @@ def predict_small_cnn_crops(img_path: str) -> float | None:
     x = np.array(face_resized, dtype=np.float32) / 255.0
     x = np.expand_dims(x, 0)
     import tensorflow as tf
-    key = "small_crops"
+    key = "small_cnn"
     if key not in _keras_models:
-        if not SMALL_CNN_CROP_CKPT.exists():
+        if not SMALL_CNN_CKPT.exists():
             return None
         import zipfile, tempfile, os as _os
         model = build_small_cnn_regressor(IMG_SIZE)
-        with zipfile.ZipFile(str(SMALL_CNN_CROP_CKPT)) as zf:
+        with zipfile.ZipFile(str(SMALL_CNN_CKPT)) as zf:
             w_name = next((n for n in zf.namelist() if "weights.h5" in n), None)
             if w_name is None:
                 return None
@@ -208,18 +201,17 @@ def predict_small_cnn_crops(img_path: str) -> float | None:
 
 def predict_vgg_cnn_crops(img_path: str) -> float | None:
     from models_cnn import build_cnn_regressor
-    return _predict_keras(img_path, VGG_CNN_CROP_CKPT, "vgg_crops", build_cnn_regressor)
+    return _predict_keras(img_path, VGG_CNN_CKPT, "vgg_cnn", build_cnn_regressor)
 
 
 # ── 결과 시각화 ──────────────────────────────────────────────────────
 MODELS = [
-    ("DeepFace\nBaseline",      predict_deepface),
-    ("FCN\nRegressor",          predict_fcn),
-    ("Small CNN\n(raw)",        predict_small_cnn_raw),
-    ("Small CNN\n(crops)",      predict_small_cnn_crops),
-    ("VGG-CNN\n(crops)",        predict_vgg_cnn_crops),
+    ("DeepFace\nBaseline", predict_deepface),
+    ("FCN\nRegressor",     predict_fcn),
+    ("Small CNN",          predict_small_cnn),
+    ("VGG-CNN",            predict_vgg_cnn_crops),
 ]
-MODEL_COLORS = ["#4C72B0", "#55A868", "#DD8452", "#E377C2", "#C44E52"]
+MODEL_COLORS = ["#4C72B0", "#55A868", "#DD8452", "#C44E52"]
 
 
 def run(img_dir: Path, out_path: Path):
