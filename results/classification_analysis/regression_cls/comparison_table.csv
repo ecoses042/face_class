@@ -1,0 +1,4 @@
+model,accuracy,macro_f1,weighted_f1
+fcn_regressor,0.7964,0.5452,0.7751
+cnn_small,0.7684,0.5056,0.7601
+cnn_vgg,0.5725,0.2427,0.4169

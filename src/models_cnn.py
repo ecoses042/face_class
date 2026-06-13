@@ -117,3 +117,28 @@ def build_small_cnn_regressor(img_size: int = 128) -> "tf.keras.Model":
         layers.Dropout(0.3),
         layers.Dense(1),
     ], name="small_cnn_age_regressor")
+
+
+def build_small_cnn_classifier(img_size: int = 128, num_classes: int = 3) -> "tf.keras.Model":
+    """소형 CNN for age group classification.
+    Same as build_small_cnn_regressor but with softmax output."""
+    from tensorflow.keras import layers, models
+
+    if img_size < 16:
+        raise ValueError("img_size must be at least 16.")
+    if num_classes < 2:
+        raise ValueError("num_classes must be at least 2.")
+
+    return models.Sequential([
+        layers.Input(shape=(img_size, img_size, 3)),
+        layers.Conv2D(32, (3, 3), activation="relu"),
+        layers.MaxPooling2D(),
+        layers.Conv2D(64, (3, 3), activation="relu"),
+        layers.MaxPooling2D(),
+        layers.Conv2D(128, (3, 3), activation="relu"),
+        layers.MaxPooling2D(),
+        layers.Flatten(),
+        layers.Dense(128, activation="relu"),
+        layers.Dropout(0.3),
+        layers.Dense(num_classes, activation="softmax"),
+    ], name="small_cnn_age_classifier")

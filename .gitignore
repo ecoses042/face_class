@@ -13,8 +13,14 @@ dataset/processed/metadata.csv
 dataset/embeddings/*.npy
 dataset/embeddings/embedding_dim.txt
 dataset/embeddings/split_meta.csv
-
-# 모델 체크포인트는 git으로 관리 (687KB)
+dataset/*
+# 모델 체크포인트 (대용량 — git에서 제외)
+**/*.keras
+**/*.h5
+**/*.pt
+**/*.pth
+**/*.ckpt
+.cuda/
 
 # 로그
 *.log

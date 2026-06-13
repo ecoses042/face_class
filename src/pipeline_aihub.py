@@ -26,12 +26,14 @@ def load_splits(use_crops: bool = False) -> tuple[pd.DataFrame, pd.DataFrame, pd
                 f"{csv_path} 없음. 먼저 python src/extract_face_crops.py 를 실행하세요."
             )
         merged = pd.read_csv(csv_path)
+        metadata = pd.read_csv(PROC_DIR / "metadata.csv")
+        merged = merged.merge(metadata[["filename", "age_past"]], on="filename", how="left")
         path_col = "crop_path"
     else:
         split_meta = pd.read_csv(EMBED_DIR / "split_meta.csv")
         metadata   = pd.read_csv(PROC_DIR  / "metadata.csv")
         merged = split_meta.merge(
-            metadata[["filename", "photo_age", "image_path"]],
+            metadata[["filename", "photo_age", "age_past", "image_path"]],
             on="filename", how="left",
         )
         path_col = "image_path"
@@ -125,7 +127,7 @@ def run_training(
 
     # ── 테스트 평가 ──────────────────────────────────────────────
     preds = model.predict(test_ds, verbose=0).flatten()
-    trues = test_df["photo_age"].to_numpy().astype("float32")
+    trues = test_df["age_past"].to_numpy().astype("float32")
 
     mae  = float(np.mean(np.abs(preds - trues)))
     rmse = float(np.sqrt(np.mean((preds - trues) ** 2)))
@@ -180,3 +182,76 @@ def run_training(
 
     print(f"  저장 완료: {result_dir}")
     return {"MAE": mae, "RMSE": rmse, "ME": me}
+
+
+# ---------------------------------------------------------------------------
+# Classification helpers
+# ---------------------------------------------------------------------------
+AGE_BINS = [0, 20, 60, float("inf")]
+CLASS_NAMES = ["young", "adult", "senior"]
+
+
+def age_to_class(age: float) -> int:
+    """age < 20 → 0, 20 ≤ age < 60 → 1, age ≥ 60 → 2"""
+    if age < 20:
+        return 0
+    elif age < 60:
+        return 1
+    return 2
+
+
+def make_dataset_cls(
+    df: pd.DataFrame,
+    img_size: int,
+    batch_size: int,
+    shuffle: bool,
+    age_col: str = "photo_age",
+    class_weights: dict | None = None,
+):
+    """make_dataset() variant that returns integer class labels (0/1/2).
+
+    class_weights: if provided, yields (image, label, sample_weight) triples
+    so Keras uses sample-level weighting without the class_weight= kwarg that
+    triggers XLA compilation failures on some CUDA setups.
+    """
+    import tensorflow as tf
+
+    paths  = df["image_path"].astype(str).to_numpy()
+    labels = df[age_col].apply(age_to_class).astype("int32").to_numpy()
+
+    if class_weights is not None:
+        weights = np.array([class_weights[c] for c in labels], dtype="float32")
+        ds = tf.data.Dataset.from_tensor_slices((paths, labels, weights))
+    else:
+        ds = tf.data.Dataset.from_tensor_slices((paths, labels))
+
+    if shuffle:
+        ds = ds.shuffle(buffer_size=len(df), seed=RANDOM_SEED, reshuffle_each_iteration=True)
+
+    if class_weights is not None:
+        def load_image_w(path, label, weight):
+            image = tf.io.read_file(path)
+            image = tf.image.decode_image(image, channels=3, expand_animations=False)
+            image = tf.image.resize(image, [img_size, img_size])
+            image = tf.cast(image, tf.float32) / 255.0
+            return image, label, weight
+        ds = ds.map(load_image_w, num_parallel_calls=tf.data.AUTOTUNE)
+    else:
+        def load_image(path, label):
+            image = tf.io.read_file(path)
+            image = tf.image.decode_image(image, channels=3, expand_animations=False)
+            image = tf.image.resize(image, [img_size, img_size])
+            image = tf.cast(image, tf.float32) / 255.0
+            return image, label
+        ds = ds.map(load_image, num_parallel_calls=tf.data.AUTOTUNE)
+
+    return ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+
+
+def compute_class_weights(df: pd.DataFrame, age_col: str = "photo_age") -> dict:
+    """Returns class_weight dict for Keras model.fit()."""
+    classes = df[age_col].apply(age_to_class).to_numpy()
+    counts  = np.bincount(classes, minlength=3)
+    total   = len(classes)
+    weights = total / (3 * counts.astype(float))
+    return {i: w for i, w in enumerate(weights)}
